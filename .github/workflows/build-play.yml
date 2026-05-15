@@ -14,7 +14,7 @@ jobs:
           java-version: 17
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
-      - name: Generate default Android-safe icon
+      - name: Generate default Android-safe full icon
         run: |
           python3 -m pip install --quiet pillow
           mkdir -p app/src/main/res/mipmap-mdpi app/src/main/res/mipmap-hdpi app/src/main/res/mipmap-xhdpi app/src/main/res/mipmap-xxhdpi app/src/main/res/mipmap-xxxhdpi app/src/main/res/mipmap-anydpi-v26 app/src/main/res/drawable
@@ -22,19 +22,18 @@ jobs:
           from PIL import Image, ImageDraw
           from pathlib import Path
           sizes={"mipmap-mdpi":48,"mipmap-hdpi":72,"mipmap-xhdpi":96,"mipmap-xxhdpi":144,"mipmap-xxxhdpi":192}
+          BG=(30,136,229,255)
           for folder,size in sizes.items():
-              img=Image.new("RGBA",(size,size),(30,136,229,255))
+              img=Image.new("RGBA",(size,size),BG)
               d=ImageDraw.Draw(img)
-              d.ellipse((size*0.18,size*0.18,size*0.82,size*0.82), fill=(255,255,255,255))
-              d.text((int(size*0.34),int(size*0.38)),"CM",fill=(30,136,229,255))
+              d.text((max(1,int(size*0.22)),max(1,int(size*0.38))),"CM",fill=(255,255,255,255))
               out=Path("app/src/main/res")/folder
               out.mkdir(parents=True,exist_ok=True)
               img.save(out/"ic_launcher.png","PNG")
               img.save(out/"ic_launcher_round.png","PNG")
-          fg=Image.new("RGBA",(432,432),(30,136,229,255))
+          fg=Image.new("RGBA",(432,432),BG)
           d=ImageDraw.Draw(fg)
-          d.ellipse((80,80,352,352), fill=(255,255,255,255))
-          d.text((170,190),"CM",fill=(30,136,229,255))
+          d.text((150,190),"CM",fill=(255,255,255,255))
           Path("app/src/main/res/drawable").mkdir(parents=True,exist_ok=True)
           fg.save("app/src/main/res/drawable/ic_launcher_foreground.png","PNG")
           PY
