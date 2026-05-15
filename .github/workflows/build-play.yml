@@ -14,35 +14,82 @@ jobs:
           java-version: 17
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
-      - name: Generate default Android-safe full icon
+      - name: Convert logo to Android-safe full icon
         run: |
           python3 -m pip install --quiet pillow
           mkdir -p app/src/main/res/mipmap-mdpi app/src/main/res/mipmap-hdpi app/src/main/res/mipmap-xhdpi app/src/main/res/mipmap-xxhdpi app/src/main/res/mipmap-xxxhdpi app/src/main/res/mipmap-anydpi-v26 app/src/main/res/drawable
-          cat > /tmp/make_default_icon.py <<'PY'
-          from PIL import Image, ImageDraw
+          curl -L "https://climamap.com/wp-content/uploads/2026/05/file_0000000043147246ab4e0e57e231795d.png" -o /tmp/source_logo || true
+          cat > /tmp/make_icons.py <<'PY'
+          from PIL import Image, ImageOps, ImageDraw
           from pathlib import Path
-          sizes={"mipmap-mdpi":48,"mipmap-hdpi":72,"mipmap-xhdpi":96,"mipmap-xxhdpi":144,"mipmap-xxxhdpi":192}
-          BG=(30,136,229,255)
-          for folder,size in sizes.items():
-              img=Image.new("RGBA",(size,size),BG)
-              d=ImageDraw.Draw(img)
-              d.text((max(1,int(size*0.22)),max(1,int(size*0.38))),"CM",fill=(255,255,255,255))
-              out=Path("app/src/main/res")/folder
-              out.mkdir(parents=True,exist_ok=True)
-              img.save(out/"ic_launcher.png","PNG")
-              img.save(out/"ic_launcher_round.png","PNG")
-          fg=Image.new("RGBA",(432,432),BG)
-          d=ImageDraw.Draw(fg)
-          d.text((150,190),"CM",fill=(255,255,255,255))
-          Path("app/src/main/res/drawable").mkdir(parents=True,exist_ok=True)
-          fg.save("app/src/main/res/drawable/ic_launcher_foreground.png","PNG")
+          src = Path("/tmp/source_logo")
+          sizes = {
+              "mipmap-mdpi": 48,
+              "mipmap-hdpi": 72,
+              "mipmap-xhdpi": 96,
+              "mipmap-xxhdpi": 144,
+              "mipmap-xxxhdpi": 192,
+          }
+
+          BG = (30, 136, 229, 255)
+
+          def load_logo():
+              try:
+                  img = Image.open(src)
+                  img = ImageOps.exif_transpose(img)
+                  img = img.convert("RGBA")
+                  return img
+              except Exception:
+                  img = Image.new("RGBA", (1024, 1024), BG)
+                  d = ImageDraw.Draw(img)
+                  d.text((390, 470), "Clima", fill=(255,255,255,255))
+                  return img
+
+          def cover_square(img, size):
+              # Fill the whole launcher area without adding white circles.
+              w, h = img.size
+              if w <= 0 or h <= 0:
+                  return Image.new("RGBA", (size, size), BG)
+
+              scale = max(size / w, size / h)
+              nw, nh = max(1, int(w * scale)), max(1, int(h * scale))
+              img = img.resize((nw, nh), Image.Resampling.LANCZOS)
+
+              left = max(0, (nw - size) // 2)
+              top = max(0, (nh - size) // 2)
+              img = img.crop((left, top, left + size, top + size))
+
+              # If image has transparency, composite over blue background.
+              canvas = Image.new("RGBA", (size, size), BG)
+              canvas.alpha_composite(img, (0, 0))
+              return canvas
+
+          logo = load_logo()
+
+          for folder, size in sizes.items():
+              out = Path("app/src/main/res") / folder
+              out.mkdir(parents=True, exist_ok=True)
+              icon = cover_square(logo, size)
+              icon.save(out / "ic_launcher.png", "PNG", optimize=True)
+              icon.save(out / "ic_launcher_round.png", "PNG", optimize=True)
+
+          # Adaptive icon foreground must be 432x432. Fill it with the real logo,
+          # not a small centered version, and do not add a white circle.
+          fg = cover_square(logo, 432)
+          Path("app/src/main/res/drawable").mkdir(parents=True, exist_ok=True)
+          fg.save("app/src/main/res/drawable/ic_launcher_foreground.png", "PNG", optimize=True)
           PY
-          python3 /tmp/make_default_icon.py
+          python3 /tmp/make_icons.py
           cat > app/src/main/res/drawable/ic_launcher_background.xml <<'XML'
-          <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle"><solid android:color="#1E88E5"/></shape>
+          <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+              <solid android:color="#1E88E5"/>
+          </shape>
           XML
           cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<'XML'
-          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"><background android:drawable="@drawable/ic_launcher_background"/><foreground android:drawable="@drawable/ic_launcher_foreground"/></adaptive-icon>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@drawable/ic_launcher_background"/>
+              <foreground android:drawable="@drawable/ic_launcher_foreground"/>
+          </adaptive-icon>
           XML
           cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
       - name: Restore signing keystore
